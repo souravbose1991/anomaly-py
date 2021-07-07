@@ -74,11 +74,11 @@ class Detector:
 
     
     def __suggest_knee(self, curve='convex', direction='decreasing'):
-        sense_rat = [0.02, 0.05, 0.07, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4]
-        y_values = [len(self.data.loc[self.data['anomaly_score'] >= float(cutoff/100)]) for cutoff in range(100)]
+        sense_rat = [0.02, 0.05, 0.07, 0.1, 0.15, 0.2, 0.25, 0.3]
+        y_values = [len(self.data.loc[self.data['anomaly_score'] >= float(cutoff/100)]) for cutoff in range(5, 100, 5)]
         norm_y = [float(y/len(self.data)) for y in y_values]
-        x_values = [float(cutoff/100) for cutoff in range(100)]
-        sensitivity = [int(s*len(self.data)) for s in sense_rat]
+        x_values = [float(cutoff/100) for cutoff in range(5, 100, 5)]
+        sensitivity = [int(s*len(y_values)) for s in sense_rat]
 
         # hold knee points for each sensitivity
         knees = []
