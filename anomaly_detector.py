@@ -91,7 +91,9 @@ class Detector:
             norm_knees.append(kl.norm_knee)
         
         fig = go.Figure(data=go.Scatter(x=x_values, y=y_values, mode='lines+markers',
-                                        text=[f'Anomaly Share: {round(yval*100,0)}%' for yval in norm_y], hoverinfo='text'))
+                                        text=[f'Anomaly Share: {round(yval*100,0)}%' for yval in norm_y], 
+                                        hovertemplate='Anomaly Count: %{y:.2f}' + '<br>Score: %{x}<br>' +
+                                                      '%{text}', hovermode="x unified"))
         # for item in knees:
         #     fig.add_shape(type='line', x0=item, y0=0, x1=item, line=dict(width=3, dash='dashdot'))
         
