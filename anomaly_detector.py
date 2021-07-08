@@ -273,7 +273,7 @@ class Detector:
         fig.add_trace(go.Scatter(x=data_out['Dim-1'], y=data_out['density'], mode='lines', line_shape='spline',
                                  fill='tozeroy', name='Outliers-Distribution'))
 
-        fig.update_layout(title_text=plot_title('Confidence Score (T-Test): ' + str(round(100*p)) + '%'), 
+        fig.update_layout(title_text=plot_title('Confidence Score (T-Test): ' + str(round(100*(1-p))) + '%'), 
                           template="plotly_white", xaxis_title='Dimension-1', yaxis_title='Probability Distribution',
                           yaxis=dict(type='linear', 
                                      range=[0, 1.1 * max(max(data_in['density']), max(data_out['density']))]))
