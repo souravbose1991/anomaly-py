@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 
 import plotly.graph_objects as go
+import plotly.express as px
 from kneed import KneeLocator
 
 from sklearn import manifold
@@ -24,6 +25,38 @@ from sklearn.svm import OneClassSVM
 from sklearn.covariance import EllipticEnvelope
 from sklearn.neighbors import LocalOutlierFactor
 
+import warnings
+warnings.filterwarnings("ignore")
+
+custom_template = {
+    "layout": go.Layout(
+        font={
+            "family": "Nunito",
+            "size": 12,
+            "color": "#707070",
+        },
+        title={
+            "font": {
+                "family": "Lato",
+                "size": 18,
+                "color": "#1f1f1f",
+            },
+        },
+        plot_bgcolor="#ffffff",
+        paper_bgcolor="#ffffff",
+        colorway=px.colors.qualitative.G10,
+    )
+}
+
+
+def plot_title(title, subtitle=None, subtitle_font_size=14):
+    title = f'<b>{title}</b>'
+    if not subtitle:
+        return title
+    subtitle = f'<span style="font-size: {subtitle_font_size}px;">{subtitle}</span>'
+    return f'{title}<br>{subtitle}'
+
+
 
 class Detector:
 
@@ -31,31 +64,49 @@ class Detector:
         
         if lib=='pyod':
             self.lib = lib
+            self.kwargs = kwargs
             if impurity == 'auto':
                 raise ValueError("PYOD: Impurity can be float in range (0, 0.5)")
             self.impurity = impurity
-            self.classifiers = {
-                'ABOD': ABOD(contamination=self.impurity, method='fast'),
-                'CBLOF': CBLOF(contamination=self.impurity, check_estimator=False, random_state=np.random.RandomState(42)),
-                'HBOS': HBOS(contamination=self.impurity),
-                'IForest': IForest(contamination=self.impurity, random_state=np.random.RandomState(42)),
-                'KNN': KNN(contamination=self.impurity),
-                'Avg-KNN': KNN(method='mean', contamination=self.impurity),
-                'LOF': LOF(n_neighbors=35, contamination=self.impurity),
-                'MCD': MCD(contamination=self.impurity, random_state=np.random.RandomState(42)),
-                'OCSVM': OCSVM(contamination=self.impurity),
-                'PCA': PCA(contamination=self.impurity, random_state=np.random.RandomState(42))
+
+            self.model_kwargs = {
+                'ABOD': {k: v for (k, v) in self.kwargs.items() if k in dir(ABOD())},
+                'CBLOF': {k: v for (k, v) in self.kwargs.items() if k in dir(CBLOF())},
+                'HBOS': {k: v for (k, v) in self.kwargs.items() if k in dir(HBOS())},
+                'IForest': {k: v for (k, v) in self.kwargs.items() if k in dir(IForest())},
+                'KNN': {k: v for (k, v) in self.kwargs.items() if k in dir(KNN())},
+                'LOF': {k: v for (k, v) in self.kwargs.items() if k in dir(LOF())},
+                'MCD': {k: v for (k, v) in self.kwargs.items() if k in dir(MCD())},
+                'OCSVM': {k: v for (k, v) in self.kwargs.items() if k in dir(OCSVM())},
+                'PCA': {k: v for (k, v) in self.kwargs.items() if k in dir(PCA())}
             }
+
+            self.classifiers = {
+                'ABOD': ABOD(contamination=self.impurity, method='fast', **self.model_kwargs['ABOD']),
+                'CBLOF': CBLOF(contamination=self.impurity, check_estimator=False, random_state=np.random.RandomState(42),
+                               **self.model_kwargs['CBLOF']),
+                'HBOS': HBOS(contamination=self.impurity, **self.model_kwargs['HBOS']),
+                'IForest': IForest(contamination=self.impurity, random_state=np.random.RandomState(42), 
+                                   **self.model_kwargs['IForest']),
+                'KNN': KNN(contamination=self.impurity, **self.model_kwargs['KNN']),
+                'LOF': LOF(n_neighbors=35, contamination=self.impurity, **self.model_kwargs['LOF']),
+                'MCD': MCD(contamination=self.impurity, random_state=np.random.RandomState(42), **self.model_kwargs['MCD']),
+                'OCSVM': OCSVM(contamination=self.impurity, **self.model_kwargs['OCSVM']),
+                'PCA': PCA(contamination=self.impurity, random_state=np.random.RandomState(42), **self.model_kwargs['PCA'])
+            }
+
             if algo not in self.classifiers.keys():
                 raise ValueError("PYOD-Algorithm should be one of the following:\n" + str(self.classifiers.keys()))
 
         elif lib=='sklearn':
             self.lib = lib
+            self.kwargs = kwargs
             self.impurity = impurity
             self.classifiers = {
                 'IForest': IsolationForest(contamination=self.impurity, random_state=np.random.RandomState(42)),
                 'LOF': LOF(n_neighbors=35, contamination=self.impurity),
-                'OCSVM': OCSVM(contamination=self.impurity)
+                'OCSVM': OneClassSVM(),
+                'E-Env': EllipticEnvelope()
             }
             if algo not in self.classifiers.keys():
                 raise ValueError("PYOD-Algorithm should be one of the following:\n" + str(self.classifiers.keys()))
@@ -70,7 +121,6 @@ class Detector:
 
         self.data = data
         self.features = features
-        self.kwargs = kwargs
 
     
     def __suggest_knee(self, curve='convex', direction='decreasing'):
@@ -91,13 +141,13 @@ class Detector:
             norm_knees.append(kl.norm_knee)
         
         fig = go.Figure(data=go.Scatter(x=x_values, y=y_values, mode='lines+markers',
-                                        text=[f'Anomaly Share: {round(yval*100,0)}%' for yval in norm_y], 
-                                        hovertemplate='Anomaly Count: %{y:.2f}' + '<br>Score: %{x}<br>' +
-                                                      '%{text}', hovermode="x unified"))
+                                        text=[f'Anomaly Share: {round(yval*100,0)}%' for yval in norm_y]))
         # for item in knees:
         #     fig.add_shape(type='line', x0=item, y0=0, x1=item, line=dict(width=3, dash='dashdot'))
         
-        fig.update_layout(title='Score Distribution', xaxis_title='Anomaly Score', yaxis_title='# Data points')
+        fig.update_layout(xaxis_title='Anomaly Score', yaxis_title='# Data points', template="plotly_white",
+                          title_text=plot_title("Score Distribution"))
+
         fig.show()
         return knees
 
@@ -132,18 +182,21 @@ class Detector:
         top_feat_name = list(feature_importances.index)[0:n_features]
         top_feat_value = feature_importances['importance'].tolist()[0:n_features]
         fig = go.Figure(go.Bar(x=top_feat_value, y=top_feat_name, orientation='h'))
+        fig['layout']['yaxis']['autorange'] = "reversed"
+        fig.update_layout(xaxis_title='Importance', yaxis_title='Features',
+                          template="plotly_white", title_text=plot_title("Top Features"))
         fig.show()
         if return_features:
             return top_feat_name
 
 
-    def visualize(self, threshold=0.5, dimensions=2, n_features=10, return_data=True):
+    def visualize(self, threshold=0.5, dimensions=2, n_features=20, return_data=True):
         feats = self.top_features(threshold=threshold, n_features=n_features, return_features=True)
         
         outliers = self.data.loc[self.data['anomaly'] == 1]
         inliers = self.data.loc[self.data['anomaly'] == 0]
         outliers_sample1 = outliers.sample(n=min(200, outliers.shape[0]), replace=False, random_state=42)
-        inliers_sample1 = inliers.sample(n=min(800, inliers.shape[0]), replace=False, random_state=42)
+        inliers_sample1 = inliers.sample(n=min(2000, inliers.shape[0]), replace=False, random_state=42)
         sample_data = outliers_sample1.append(inliers_sample1, ignore_index=True)
         
         X = sample_data[feats]
@@ -157,29 +210,47 @@ class Detector:
             raise ValueError("Choose dimensions as 2 or 3")
 
         self.data_mds['anomaly'] = sample_data['anomaly']
-
         outliers_sample = self.data_mds.loc[self.data_mds['anomaly'] == 1]
         inliers_sample = self.data_mds.loc[self.data_mds['anomaly'] == 0]
 
         if dimensions == 2:
-            fig = go.Figure(data=go.Scatter(x=outliers_sample['Dim-1'], y=outliers_sample['Dim-2'], 
-                                            mode='markers', name="Anomaly", marker=dict(size=5)))
-            fig.add_trace(go.Scatter(x=inliers_sample['Dim-1'], y=inliers_sample['Dim-2'],
-                                     mode='markers', name="Normal",  marker=dict(size=5)))
-            fig.update_layout(title='Anomaly Identification', xaxis_title='Dimension-1', yaxis_title='Dimension-2')
+            fig = go.Figure(data=go.Scatter(x=inliers_sample['Dim-1'], y=inliers_sample['Dim-2'],
+                                            mode='markers', name="Normal", marker=dict(size=5)))
+            fig.add_trace(go.Scatter(x=outliers_sample['Dim-1'], y=outliers_sample['Dim-2'],
+                                     mode='markers', name="Anomaly",  marker=dict(size=5)))
+            fig.update_layout(title_text=plot_title('Anomaly Identification'), template="plotly_white",
+                              xaxis_title='Dimension-1', yaxis_title='Dimension-2')
             fig.show()
 
         elif dimensions == 3:
-            fig=go.Figure(data=go.Scatter3d(x=outliers_sample['Dim-1'], y=outliers_sample['Dim-2'], z=outliers_sample['Dim-3'],
-                                            mode='markers', name="Anomaly", marker=dict(size=5)))
-            fig.add_trace(go.Scatter(x=inliers_sample['Dim-1'], y=inliers_sample['Dim-2'], z=inliers_sample['Dim-3'],
-                                     mode='markers', name="Normal",  marker=dict(size=5)))
-            fig.update_layout(title='Anomaly Identification', xaxis_title='Dimension-1', 
-                              yaxis_title='Dimension-2', zaxis_title='Dimension-3')
+            fig = go.Figure(data=go.Scatter3d(x=inliers_sample['Dim-1'], y=inliers_sample['Dim-2'], z=inliers_sample['Dim-3'],
+                                            mode='markers', name="Normal", marker=dict(size=5)))
+            fig.add_trace(go.Scatter3d(x=outliers_sample['Dim-1'], y=outliers_sample['Dim-2'], z=outliers_sample['Dim-3'],
+                                     mode='markers', name="Anomaly",  marker=dict(size=5)))
+            fig.update_layout(title_text=plot_title('Anomaly Identification'),
+                scene=dict(xaxis_title='Dimension-1', yaxis_title='Dimension-2', zaxis_title='Dimension-3',
+                xaxis=dict(backgroundcolor="rgb(200, 200, 230)", gridcolor="white", showbackground=True, zerolinecolor="white",),
+                yaxis=dict(backgroundcolor="rgb(230, 200,230)", gridcolor="white", showbackground=True, zerolinecolor="white",),
+                zaxis=dict(backgroundcolor="rgb(230, 230,200)", gridcolor="white", showbackground=True, zerolinecolor="white",),),
+                width=700)
             fig.show()
 
         if return_data:
             return self.data
+    
+    
+    def get_density(self, data, feats):        
+        X = data[feats]
+        x_transformed = manifold.MDS(n_components=1, metric=True, n_init=1, max_iter=300,
+                                     dissimilarity='euclidean').fit_transform(X)
+        mds_1d = pd.DataFrame(x_transformed, columns=['Dim-1'])
+        mds_1d['anomaly'] = sample_data['anomaly']
+        outliers_sample = mds_1d.loc[mds_1d['anomaly'] == 1]
+        inliers_sample = mds_1d.loc[mds_1d['anomaly'] == 0]
+
+
+
+
         
 
 
