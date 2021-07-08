@@ -1,4 +1,5 @@
 
+from re import template
 import pandas as pd
 import numpy as np
 
@@ -8,6 +9,8 @@ from kneed import KneeLocator
 
 from sklearn import manifold
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KernelDensity
+from scipy import stats
 
 # Import all models
 from pyod.models.abod import ABOD
@@ -24,6 +27,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.svm import OneClassSVM
 from sklearn.covariance import EllipticEnvelope
 from sklearn.neighbors import LocalOutlierFactor
+
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -235,18 +239,45 @@ class Detector:
                 width=700)
             fig.show()
 
+
+        self._get_density(sample_data, feats)
+
         if return_data:
             return self.data
     
     
-    def get_density(self, data, feats):        
-        X = data[feats]
+    def __get_density(self, data, feats):        
+        X = data[feats].to_numpy()
         x_transformed = manifold.MDS(n_components=1, metric=True, n_init=1, max_iter=300,
                                      dissimilarity='euclidean').fit_transform(X)
         mds_1d = pd.DataFrame(x_transformed, columns=['Dim-1'])
-        mds_1d['anomaly'] = sample_data['anomaly']
+        mds_1d['anomaly'] = data['anomaly']
         outliers_sample = mds_1d.loc[mds_1d['anomaly'] == 1]
         inliers_sample = mds_1d.loc[mds_1d['anomaly'] == 0]
+
+        X = inliers_sample[['Dim-1']].to_numpy()
+        kde = KernelDensity(kernel='gaussian', bandwidth=1.0).fit(X)
+        log_density = kde.score_samples(X)
+        data_in = pd.DataFrame({'Dim-1': X.reshape(-1,), 'density': np.exp(log_density)})
+        data_in = data_in.sort_values(by=['Dim-1'], axis=0, ascending=True)
+
+        X = outliers_sample[['Dim-1']].to_numpy()
+        kde = KernelDensity(kernel='gaussian', bandwidth=1.0).fit(X)
+        log_density = kde.score_samples(X)
+        data_out = pd.DataFrame({'Dim-1': X.reshape(-1,), 'density': np.exp(log_density)})
+        data_out = data_out.sort_values(by=['Dim-1'], axis=0, ascending=True)
+        mu, p = stats.ttest_ind(data_out['Dim-1'], data_in['Dim-1'], equal_var=False)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=data_in['Dim-1'], y=data_in['density'], mode='lines', line_shape='spline',
+                                 fill='tozeroy', name='Inliers-Distribution'))
+        fig.add_trace(go.Scatter(x=data_out['Dim-1'], y=data_out['density'], mode='lines', line_shape='spline',
+                                 fill='tozeroy', name='Outliers-Distribution'))
+
+        fig.update_layout(title_text=plot_title('Confidence Score (T-Test): ' + str(round(100*p)) + '%'), 
+                          template="plotly_white", xaxis_title='Dimension-1', yaxis_title='Probability Distribution',
+                          yaxis=dict(type='linear', 
+                                     range=[0, 1.1 * max(max(data_in['density']), max(data_out['density']))]))
+        fig.show()
 
 
 
